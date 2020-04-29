@@ -21,7 +21,7 @@ class GPLARBase(BayesianModel):
 
     def __init__(self, likelihoods, layers, 
                  num_samples=10, num_data=None, 
-                 minibatch_size=None,
+                 minibatch_size=None, missing=False,
             **kwargs):
         super().__init__(**kwargs)
 
@@ -30,6 +30,7 @@ class GPLARBase(BayesianModel):
         self.num_samples = num_samples
         self.num_data = num_data
         self.minibatch_size = minibatch_size
+        self.missing = missing
         
 
     def propagate(self, X, full_cov=False, S=1, zs=None):
@@ -87,9 +88,18 @@ class GPLARBase(BayesianModel):
                
         result = tf.cast(0., dtype=np.float64)
         for i in range(num_output):
+            if self.missing:
+                available = ~tf.math.is_nan(Y[:,i])
+                y = tf.where(available, Y[:,i], 0.)
+            else:
+                y = Y[:,i]
+                
             var_exp = self.likelihoods[i].variational_expectations(Hmean[i], #[S,N,1]
                                                                    Hvar[i], #[S,N,1]
-                                                                   tf.expand_dims(Y[:,i],-1)) #[N,1]
+                                                                   y[:,None]) #[N,1]
+            if self.missing:
+                mask = tf.cast(tf.where(available,1.,0.),dtype=var_exp.dtype)
+                var_exp = var_exp * tf.tile(mask[None,:],[self.num_samples,1])
             result += tf.reduce_mean(var_exp,0)
         return result
 
@@ -161,7 +171,7 @@ class GPLAR(GPLARBase):
         return layers
 
 class GPLARegressor(GPLAR):
-    def __init__(self, X, Y, M, minibatch_size=None,
+    def __init__(self, X, Y, M, minibatch_size=None, missing=False,
                  mean_function=Zero(), white=False,
                  impute=True, 
                  scale=1.0,scale_tie=False,
@@ -193,13 +203,21 @@ class GPLARegressor(GPLAR):
         # Todo: impute, handle missing data, make closed down
         # Todo: initialize inducing locations Z
         Z = self._initialize_inducing_locations(X,Y,M)
+        if np.any(np.isnan(Y)): missing = True
         super().__init__(X,Y,Z, kernels, likelihoods,
                          mean_function=mean_function,white=white,
                          num_data=X.shape[0],
-                         minibatch_size=minibatch_size,**kwargs)
+                         minibatch_size=minibatch_size,
+                         missing = missing, **kwargs)
         
+    # choose datapoint that are closed downwards 
     def _initialize_inducing_locations(self, X, Y, M):
-        r = np.random.choice(X.shape[0],M,replace=False)
+        N = X.shape[0]
+        notnan, idx = np.array([True]*N), np.array(list(range(N)))
+        for i in range(self.num_outputs):
+            notnan = np.logical_and(notnan, ~np.isnan(Y[:,i]))
+        
+        r = np.random.choice(idx[notnan],M,replace=False)
         return np.concatenate((X[r,:],Y[r,:]),axis=1)
         
         
