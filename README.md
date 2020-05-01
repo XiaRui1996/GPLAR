@@ -9,3 +9,7 @@ The mean of the variational distributions are intializaed to be the correspondin
 Have missing data in say the first / second output, but subsequent outputs are observed.
 This can be implemented fairly simply by removing the reconstruction term in the ELBO E( log p(y_1|z_1 )) for the missing outputs.
 Comparing with GPAR with impute, the square sum of error for GPLAR is lower. But GPLAR is also easy to be trapped into local minimum. 
+
+###### Problems: 
+1. GPLAR is not producing correct uncertainty, it still seems over-confident in second and thrid output
+2. GPLAR is not certain in first output, while it should. Because the current pseudo-points strategies, only close-downwards observations can be chosen as pseudo-points. 
