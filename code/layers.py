@@ -9,6 +9,7 @@ from gpflow.utilities import positive, triangular
 from gpflow.models.util import inducingpoint_wrapper
 from gpflow.config import default_float, default_jitter
 from utilities import reparameterise
+import tensorflow_probability as tfp
 
 gpflow.config.set_default_float(np.float64)
 gpflow.config.set_default_jitter(1e-6)
@@ -16,7 +17,6 @@ gpflow.config.set_default_jitter(1e-6)
 class Layer(Module):
     """A base glass for GPLAR layers. Basic functionality for multisample 
     conditional and input propagation.
-
     :inputs_prop_dim: An int, the first dimensions of X to propagate."""
 
     def __init__(self, **kwargs):
@@ -31,7 +31,6 @@ class Layer(Module):
     def conditional_SND(self, X, full_cov=False):
         """A multisample conditional, where X has shape [S,N,D], 
         independent over samples.
-
         :X: A tensor, the input locations [S,N,D].
         :full_cov: A boolean, whether to use the full covariance or not."""
         if full_cov is True:
@@ -48,7 +47,6 @@ class Layer(Module):
     def sample_from_conditional(self, X, z=None, full_cov=False):
         """Computes self.conditional and draws a sample using the 
         reparameterisation trick, adding input propagation if necessary.
-
         :X: A tensor, input points [S,N,D_in].
         :full_cov: A boolean, whether to calculate full covariance or not.
         :z: A tensor or None, used in reparameterisation trick."""
@@ -67,15 +65,11 @@ class SVGPLayer(Layer):
     """A sparse variational GP layer in whitened representation. This layer 
     holds the kernel, variational parameters, inducing point and mean
     function.
-
     The underlying model at inputs X is:
     f = Lv + mean_function(X), where v ~ N(0,I) and LL^T = kernel.K(X).
-
     The variational distribution over the inducing points is:
     q(u) = N(u; q_mu, L_qL_q^T), where L_qL_q^T = q_var.
-
     The layer holds only one GP.
-
     :kernel: A gpflow.kernel, the kernel for the layer.
     :inducing_variables: A tensor, the inducing points. [M+i,D_in]
     :index_output i: A scalr number, indicating index of current output.
@@ -94,10 +88,11 @@ class SVGPLayer(Layer):
         
          # Initialise q_mu to y^2_pi(i)
         q_mu = q_mu_initial[:,None]
+        #q_mu = np.zeros((self.num_inducing, 1))
         self.q_mu = Parameter(q_mu, dtype=default_float())
 
         # Initialise q_sqrt to near deterministic. Store as lower triangular matrix L.
-        q_sqrt = 1e-3*np.eye(self.num_inducing, dtype=default_float())
+        q_sqrt = 1e-4*np.eye(self.num_inducing, dtype=default_float())
         self.q_sqrt = Parameter(q_sqrt, transform=triangular())
 
         self.kernel = kernel
@@ -109,7 +104,7 @@ class SVGPLayer(Layer):
             #Ku = Kuu(self.inducing_points, self.kernel, jitter=default_jitter())
             #Lu = tf.linalg.cholesky(Ku)
             #q_sqrt = Lu
-            #999self.q_sqrt = Parameter(q_sqrt, transform=triangular())
+            #self.q_sqrt = Parameter(q_sqrt, transform=triangular())
 
     def conditional(self, X, full_cov=False):
         # X is [N,D] or [S*N,D]
@@ -163,5 +158,3 @@ class SVGPLayer(Layer):
         
         self.inducing_points = tf.concat([self.inducing_points.Z[:,:-1], 
                                           last_q_mu],axis=1)
-
-

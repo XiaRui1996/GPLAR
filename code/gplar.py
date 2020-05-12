@@ -12,6 +12,8 @@ from layers import SVGPLayer
 from utilities import BroadcastingLikelihood
 from gpflow.utilities import set_trainable
 from gpflow.models.util import inducingpoint_wrapper
+from gpar.regression import GPARRegressor
+from scipy.cluster.vq import kmeans2
 
 gpflow.config.set_default_float(np.float64)
 gpflow.config.set_default_jitter(1e-6)
@@ -35,7 +37,6 @@ class GPLARBase(BayesianModel):
 
     def propagate(self, X, full_cov=False, S=1, zs=None):
         """Propagate input X through layers of the GPLAR S times. 
-
         :X: A tensor, the input to the GPLAR.
         :full_cov: A bool, indicates whether or not to use the full
         covariance matrix.
@@ -72,13 +73,10 @@ class GPLARBase(BayesianModel):
     def E_log_p_Y(self, X, Y, full_cov=False):
         """Computes Monte Carlo estimate of the expected log density of the
         data, given a Gaussian distribution for the function values.
-
         if 
-
             q(f) = N(Hmu, Hvar)
             
         this method approximates
-
             \int (\log p(y|f)) q(f) df"""
         num_output = Y.shape[1]
         Hmean, Hvar = self._predict(X, full_cov=full_cov, S=self.num_samples)
@@ -130,9 +128,12 @@ class GPLARBase(BayesianModel):
     
     def predict_y(self, Xnew, num_samples, full_cov=False):
         Hmean, Hvar = self._predict(Xnew, full_cov=full_cov, S=num_samples)
-        f = lambda i: self.likelihoods[i].predict_mean_and_var(Hmean[i], Fvar[i])
-        mean, var = tf.map_fn(f, list(range(len(self.layers))), dtype=(tf.float64, tf.float64))    
-        return np.stack(mean), np.stack(var)
+        ms, vs = [],[]
+        for i in range(len(self.likelihoods)):
+            mean, var = self.likelihoods[i].predict_mean_and_var(Hmean[i],Fvar[i])
+        ms.append(mean)
+        vs.append(var)
+        return np.stack(ms), np.stack(vs)
     
     #def predict_density(self, Xnew, Ynew, num_samples, full_cov=False):
         #Hmean, Hvar = self._predict(Xnew, full_cov=full_cov, S=num_samples)
@@ -164,14 +165,15 @@ class GPLAR(GPLARBase):
         num_outputs = Y.shape[1]
         
         for i in range(num_outputs):
-            layer = Layer(kernels[i], Z[:,:num_inputs+i], Z[:,num_inputs+i], mean_function, white=white)
+            layer = Layer(kernels[i], Z[i][:,:num_inputs+i], Z[i][:,num_inputs+i], mean_function, white=white)
             layers.append(layer)
             #Z = tf.concate([Z,layer.q_mu], axis=1)
             
         return layers
 
 class GPLARegressor(GPLAR):
-    def __init__(self, X, Y, M, minibatch_size=None, missing=False,
+    def __init__(self, X, Y, M, gpar, 
+                 reorder = None, minibatch_size=None, missing=False,
                  mean_function=Zero(), white=False,
                  impute=True, 
                  scale=1.0,scale_tie=False,
@@ -196,13 +198,15 @@ class GPLARegressor(GPLAR):
             'noise_inner': noise_inner}
         self.m = X.shape[1]
         self.num_outputs = Y.shape[1]
+        self.reorder = reorder
         kernels = self._kernels_generator()
         likelihoods = [Gaussian(variance=noise_obs)]*self.num_outputs
         
         # Todo: normalize y
         # Todo: impute, handle missing data, make closed down
         # Todo: initialize inducing locations Z
-        Z = self._initialize_inducing_locations(X,Y,M)
+        Z = self._initialize_inducing_locations_from_post_GPAR(gpar,X,Y,M)
+        self.initial_inducing_points = Z
         if np.any(np.isnan(Y)): missing = True
         super().__init__(X,Y,Z, kernels, likelihoods,
                          mean_function=mean_function,white=white,
@@ -211,15 +215,24 @@ class GPLARegressor(GPLAR):
                          missing = missing, **kwargs)
         
     # choose datapoint that are closed downwards 
-    def _initialize_inducing_locations(self, X, Y, M):
-        N = X.shape[0]
+    def _initialize_inducing_locations(self, X, Y, M): #M is number of inducing points per layer
+        N, inducing_points = X.shape[0], []
         notnan, idx = np.array([True]*N), np.array(list(range(N)))
         for i in range(self.num_outputs):
             notnan = np.logical_and(notnan, ~np.isnan(Y[:,i]))
-        
-        r = np.random.choice(idx[notnan],M,replace=False)
-        return np.concatenate((X[r,:],Y[r,:]),axis=1)
-        
+            r = np.random.choice(idx[notnan],M[i],replace=False)
+            inducing_points.append(np.concatenate((X[r,:],Y[r,:i+1]),axis=1))
+        return inducing_points
+    
+    def _initialize_inducing_locations_from_post_GPAR(self, gpar, X, Y, M):
+        gpar.fit(X,Y)
+        Z = np.linspace(np.min(X),np.max(X),M).reshape(M,1)
+        means = gpar.predict(Z, num_samples=200, latent=True)
+        inducing_points = []
+        for i in range(self.num_outputs):
+            inducing_points.append(np.concatenate((Z, means[:,:i+1]),axis=1))
+        return inducing_points
+    
         
     def _kernels_generator(self):
         
@@ -290,8 +303,3 @@ class GPLARegressor(GPLAR):
             kernels.append(kernel)
             
         return kernels
-            
-            
-            
-            
-            
