@@ -16,5 +16,5 @@ Comparing with GPAR with impute, the square sum of error for GPLAR is lower. But
 
 #### 12/05/2020: 
 1. Use different numbers of inducing points per layer. It did reduce the unnecessary uncertainty in first layer.
-Use GPAR posterior predictive mean as initial value for q_mu. I tried normal long time series and longer time series, and also only with 50 inducing points. It is observed in all cases that even when GPAR posterior predictive mean fail, GPLAR can correct them.
-Try GPLAR using method in above 2, on real dataset, EEG and Exchange rate. Although the smse metrics are similar for the two models, we can see GPLAR has better calibrated uncertainty in EEG F1 and Exchange USD/AUD.
+2. Use GPAR posterior predictive mean as initial value for q_mu. I tried normal long time series and longer time series, and also only with 50 inducing points. It is observed in all cases that even when GPAR posterior predictive mean fail, GPLAR can correct them.
+3. Try GPLAR using method in above 2, on real dataset, EEG and Exchange rate. Although the smse metrics are similar for the two models, we can see GPLAR has better calibrated uncertainty in EEG F1 and Exchange USD/AUD.
