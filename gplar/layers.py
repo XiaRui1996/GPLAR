@@ -8,7 +8,7 @@ from gpflow.covariances import Kuf, Kuu
 from gpflow.utilities import positive, triangular
 from gpflow.models.util import inducingpoint_wrapper
 from gpflow.config import default_float, default_jitter
-from utilities import reparameterise
+from .utilities import reparameterise
 import tensorflow_probability as tfp
 
 gpflow.config.set_default_float(np.float64)
