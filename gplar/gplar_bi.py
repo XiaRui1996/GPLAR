@@ -8,8 +8,8 @@ from gpflow.kernels import SquaredExponential, RationalQuadratic, Periodic, Whit
 from gpflow.kernels import Linear as LinearKernel
 from gpflow.likelihoods import Gaussian, MultiClass
 from gpflow.config import default_float, default_jitter
-from layers_bi import SVGPLayer
-from utilities import BroadcastingLikelihood
+from .layers_bi import SVGPLayer
+from .utilities import BroadcastingLikelihood
 from gpflow.utilities import set_trainable
 from gpflow.models.util import inducingpoint_wrapper
 from gpar.regression import GPARRegressor
