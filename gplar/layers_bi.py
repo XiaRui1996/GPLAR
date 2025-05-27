@@ -79,32 +79,23 @@ class SVGPLayer(Layer):
     def __init__(self, kernel, inducing_variables, q_mu_initial, q_sqrt_initial,
                  mean_function,optimize_inducing_location=False, white=False, **kwargs):
         super().__init__(**kwargs)
-
+        M = inducing_variables.shape[0]
         self.inducing_points = inducingpoint_wrapper(inducing_variables)
         gpflow.set_trainable(self.inducing_points, optimize_inducing_location)
-        
-        self.num_inducing = inducing_variables.shape[0]
-        
-         # Initialise q_mu to y^2_pi(i)
-        q_mu = q_mu_initial[:,None]
-        if optimize_inducing_location: q_mu = np.zeros((self.num_inducing, 1))
-        self.q_mu = Parameter(q_mu, dtype=default_float())
-
-        # Initialise q_sqrt to near deterministic. Store as lower triangular matrix L.
-        q_sqrt = 1e-4*np.eye(self.num_inducing, dtype=default_float())
-        #q_sqrt = np.diag(q_sqrt_initial)
-        self.q_sqrt = Parameter(q_sqrt, transform=triangular())
+        if q_mu_initial is None:
+            q_mu_initial = np.zeros((M,1))
+        if q_sqrt_initial is None:
+            q_sqrt_initial = 1e-4 * np.eye(M)
+        if q_sqrt_initial.ndim == 1:
+            q_sqrt_initial = np.diag(q_sqrt_initial)
+            
+        self.q_mu   = Parameter(q_mu_initial, dtype=default_float())
+        self.q_sqrt = Parameter(q_sqrt_initial, transform=triangular(), dtype=default_float())
 
         self.kernel = kernel
-        self.mean_function = mean_function
+        self.mean_function = mean_function or gpflow.mean_functions.Zero()
         self.white = white
 
-        # Initialise to prior (Ku) + jitter.
-        #if not self.white and optimize_inducing_location:
-            #Ku = Kuu(self.inducing_points, self.kernel, jitter=default_jitter())
-            #Lu = tf.linalg.cholesky(Ku)
-            #q_sqrt = Lu
-            #self.q_sqrt = Parameter(q_sqrt, transform=triangular())
 
     def conditional(self, X, full_cov=False):
         # X is [N,D] or [S*N,D]
