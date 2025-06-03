@@ -509,5 +509,3 @@ class GPLARegressor(GPLAR):
 
             kernels.append(kernel)
         return kernels
-            
-        return kernels
